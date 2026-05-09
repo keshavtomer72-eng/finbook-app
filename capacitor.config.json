@@ -1,0 +1,13 @@
+{
+  "appId": "com.finbook.app",
+  "appName": "FinBook",
+  "webDir": "build",
+  "android": { "backgroundColor": "#0f1117" },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1800,
+      "backgroundColor": "#0f1117",
+      "showSpinner": false
+    }
+  }
+}
