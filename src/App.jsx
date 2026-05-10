@@ -1,51 +1,24 @@
-// UPDATED IMPORT
-import { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useCallback } from "react";
 
-/* ─────────────────────────────────────────────────────────
-   IMPROVED HELPERS
-───────────────────────────────────────────────────────── */
-
-const fmt = n =>
-  "₹" + (Number(n) || 0).toLocaleString("en-IN", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-
-const fmtD = n =>
-  "₹" + (Number(n) || 0).toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
-const safeNum = v => parseFloat(v) || 0;
-
-const today = () => new Date().toISOString().slice(0, 10);
-
-/* ─────────────────────────────────────────────────────────
-   IMPROVED STORAGE HOOK
-───────────────────────────────────────────────────────── */
-
-function useStorage(key, init) {
-  const [val, setVal] = useState(() => {
+// ---------- STORAGE ----------
+function useStorage(key, initialValue) {
+  const [value, setValue] = useState(() => {
     try {
-      const s = localStorage.getItem(key);
-      return s ? JSON.parse(s) : init;
-    } catch (err) {
-      console.warn("Storage read failed", err);
-      return init;
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : initialValue;
+    } catch {
+      return initialValue;
     }
   });
 
-  const set = useCallback(
-    v => {
-      setVal(prev => {
-        const next = typeof v === "function" ? v(prev) : v;
+  const setStoredValue = useCallback(
+    (val) => {
+      setValue((prev) => {
+        const next = typeof val === "function" ? val(prev) : val;
 
         try {
           localStorage.setItem(key, JSON.stringify(next));
-        } catch (err) {
-          console.warn("Storage save failed", err);
-        }
+        } catch {}
 
         return next;
       });
@@ -53,512 +26,605 @@ function useStorage(key, init) {
     [key]
   );
 
-  return [val, set];
+  return [value, setStoredValue];
 }
 
-/* ─────────────────────────────────────────────────────────
-   EXPORT / IMPORT
-───────────────────────────────────────────────────────── */
-
-function exportData({
-  salaries,
-  expenses,
-  emis,
-  investments,
-  budgets,
-  savingsGoals,
-}) {
-  const data = {
-    salaries,
-    expenses,
-    emis,
-    investments,
-    budgets,
-    savingsGoals,
-    exportedAt: new Date().toISOString(),
-  };
-
-  const blob = new Blob(
-    [JSON.stringify(data, null, 2)],
-    { type: "application/json" }
-  );
-
-  const a = document.createElement("a");
-
-  a.href = URL.createObjectURL(blob);
-  a.download = "finbook-backup.json";
-
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  URL.revokeObjectURL(a.href);
-}
-
-function importData(
-  file,
-  {
-    setSalaries,
-    setExpenses,
-    setEmis,
-    setInvestments,
-    setBudgets,
-    setSavingsGoals,
-  }
-) {
-  const reader = new FileReader();
-
-  reader.onload = e => {
-    try {
-      const data = JSON.parse(e.target.result);
-
-      setSalaries(data.salaries || []);
-      setExpenses(data.expenses || []);
-      setEmis(data.emis || []);
-      setInvestments(data.investments || []);
-      setBudgets(data.budgets || {});
-      setSavingsGoals(data.savingsGoals || []);
-
-      alert("Backup restored successfully!");
-    } catch (err) {
-      alert("Invalid backup file");
-      console.error(err);
-    }
-  };
-
-  reader.readAsText(file);
-}
-
-/* ─────────────────────────────────────────────────────────
-   SAFER SPARKBAR
-───────────────────────────────────────────────────────── */
-
-function SparkBar({ data = [], color }) {
-  const max = Math.max(...(data.length ? data : [1]), 1);
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-end",
-        gap: 3,
-        height: 32,
-      }}
-    >
-      {data.map((v, i) => (
-        <div
-          key={i}
-          style={{
-            flex: 1,
-            background: i === data.length - 1 ? color : "#ddd",
-            borderRadius: 3,
-            height: `${Math.max(4, (v / max) * 32)}px`,
-            transition: "height .4s ease",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────
-   MEMOIZED CALCULATIONS
-───────────────────────────────────────────────────────── */
-
-// REPLACE YOUR EXISTING COMPUTED SECTION WITH THIS
-
-const monthSalary = useMemo(
-  () =>
-    salaries
-      .filter(s => s.date.startsWith(thisMonth))
-      .reduce((a, s) => a + s.amount, 0),
-  [salaries, thisMonth]
-);
-
-const monthExpenses = useMemo(
-  () =>
-    expenses
-      .filter(e => e.date.startsWith(thisMonth))
-      .reduce((a, e) => a + e.amount, 0),
-  [expenses, thisMonth]
-);
-
-const monthEMI = useMemo(
-  () => emis.reduce((a, e) => a + e.amount, 0),
-  [emis]
-);
-
-const totalInvested = useMemo(
-  () => investments.reduce((a, i) => a + i.invested, 0),
-  [investments]
-);
-
-const totalCurrent = useMemo(
-  () => investments.reduce((a, i) => a + i.current, 0),
-  [investments]
-);
-
-const investGain = useMemo(
-  () => totalCurrent - totalInvested,
-  [totalCurrent, totalInvested]
-);
-
-const balance = useMemo(
-  () => monthSalary - monthExpenses - monthEMI,
-  [monthSalary, monthExpenses, monthEMI]
-);
-
-const totalSaved = useMemo(
-  () => savingsGoals.reduce((a, g) => a + g.saved, 0),
-  [savingsGoals]
-);
-
-const budgetAlerts = useMemo(() => {
-  return Object.entries(budgets)
-    .map(([cat, limit]) => {
-      const spent = expenses
-        .filter(
-          e =>
-            e.category === cat &&
-            e.date.startsWith(thisMonth)
-        )
-        .reduce((a, e) => a + e.amount, 0);
-
-      const pct = limit ? (spent / limit) * 100 : 0;
-
-      return { cat, spent, limit, pct };
-    })
-    .filter(b => b.pct > 60)
-    .sort((a, b) => b.pct - a.pct);
-}, [budgets, expenses, thisMonth]);
-
-const expByCat = useMemo(() => {
-  return EXP_CATS.map(cat => ({
-    label: cat,
-    value: expenses
-      .filter(
-        e =>
-          e.category === cat &&
-          e.date.startsWith(thisMonth)
-      )
-      .reduce((a, e) => a + e.amount, 0),
-    color: CAT_COLORS[cat],
-  })).filter(d => d.value > 0);
-}, [expenses, thisMonth]);
-
-const last6 = useMemo(() => {
-  return Array.from({ length: 6 }, (_, i) => {
-    const d = new Date();
-
-    d.setMonth(d.getMonth() - (5 - i));
-
-    const ym = `${d.getFullYear()}-${String(
-      d.getMonth() + 1
-    ).padStart(2, "0")}`;
-
-    return expenses
-      .filter(e => e.date.startsWith(ym))
-      .reduce((a, e) => a + e.amount, 0);
+// ---------- HELPERS ----------
+const fmt = (n) =>
+  "₹" +
+  Number(n || 0).toLocaleString("en-IN", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
-}, [expenses]);
 
-/* ─────────────────────────────────────────────────────────
-   FAB FIX
-───────────────────────────────────────────────────────── */
+const uid = () =>
+  Date.now().toString(36) + Math.random().toString(36).slice(2);
 
-/* REPLACE OLD FAB CSS */
+const today = () => new Date().toISOString().slice(0, 10);
 
-.fab {
-  position: fixed;
-  bottom: 74px;
-  right: 16px;
-  width: 54px;
-  height: 54px;
-  border-radius: 16px;
-  background: linear-gradient(135deg,#2d6a4f,#52b788);
-  color: #fff;
-  font-size: 26px;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 99;
-}
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
-/* ─────────────────────────────────────────────────────────
-   DELETE CONFIRMATION
-───────────────────────────────────────────────────────── */
+const EXPENSE_CATEGORIES = [
+  "Food",
+  "Transport",
+  "Shopping",
+  "Bills",
+  "Entertainment",
+  "Health",
+  "Education",
+  "Groceries",
+  "Rent",
+  "Other",
+];
 
-function confirmDelete(type, id) {
-  const ok = window.confirm(
-    "Are you sure you want to delete this item?"
-  );
-
-  if (!ok) return;
-
-  deleteItem(type, id);
-}
-
-/* REPLACE ALL DELETE BUTTONS */
-
-<button
-  className="btn btn-danger btn-sm"
-  onClick={() => confirmDelete("expense", form.id)}
->
-  Delete
-</button>
-
-/* ─────────────────────────────────────────────────────────
-   VALIDATION
-───────────────────────────────────────────────────────── */
-
-function validateAmount(v) {
-  return Number(v) > 0;
-}
-
-/* EXAMPLE SAVE FUNCTION */
-
-function saveExpense() {
-  if (!form.name?.trim()) {
-    alert("Enter expense name");
-    return;
-  }
-
-  if (!validateAmount(form.amount)) {
-    alert("Amount must be greater than 0");
-    return;
-  }
-
-  const item = {
-    id: form.id || uid(),
-    name: form.name.trim(),
-    amount: safeNum(form.amount),
-    category: form.category || "Other",
-    date: form.date || today(),
-    note: form.note || "",
-  };
-
-  if (form.id) {
-    setExpenses(e =>
-      e.map(x => (x.id === form.id ? item : x))
-    );
-  } else {
-    setExpenses(e => [item, ...e]);
-  }
-
-  closeModal();
-}
-
-/* ─────────────────────────────────────────────────────────
-   INPUT MOBILE OPTIMIZATION
-───────────────────────────────────────────────────────── */
-
-/* REPLACE NUMBER INPUTS */
-
-<input
-  className="inp"
-  type="number"
-  inputMode="numeric"
-  placeholder="0"
-  value={form.amount || ""}
-  onChange={e =>
-    setForm(f => ({
-      ...f,
-      amount: e.target.value,
-    }))
-  }
-/>
-
-/* ─────────────────────────────────────────────────────────
-   ACCESSIBILITY FIX
-───────────────────────────────────────────────────────── */
-
-/* FAB */
-
-<button
-  aria-label="Add Transaction"
-  className="fab"
-  onClick={FAB_ACTIONS[tab]}
->
-  +
-</button>
-
-/* NAV */
-
-<button
-  aria-label={t.label}
-  key={t.id}
-  className={`nav-btn ${tab === t.id ? "on" : ""}`}
-  onClick={() => setTab(t.id)}
->
-
-/* ─────────────────────────────────────────────────────────
-   GOALS EMPTY STATE
-───────────────────────────────────────────────────────── */
-
-{
-  savingsGoals.length === 0 ? (
-    <div className="empty">
-      <div className="empty-ic">🎯</div>
-      No savings goals yet
-    </div>
-  ) : (
-    savingsGoals.map(g => (
-      // existing goal card
-    ))
-  );
-}
-
-/* ─────────────────────────────────────────────────────────
-   SEARCH FEATURE
-───────────────────────────────────────────────────────── */
-
-const [search, setSearch] = useState("");
-
-/* SEARCH INPUT */
-
-<input
-  className="inp"
-  placeholder="Search expenses..."
-  value={search}
-  onChange={e => setSearch(e.target.value)}
-/>
-
-/* FILTER */
-
-const filtered =
-  filterCat === "All"
-    ? expenses.filter(e =>
-        e.name
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      )
-    : expenses.filter(
-        e =>
-          e.category === filterCat &&
-          e.name
-            .toLowerCase()
-            .includes(search.toLowerCase())
-      );
-
-/* ─────────────────────────────────────────────────────────
-   IMPORT / EXPORT UI
-───────────────────────────────────────────────────────── */
-
-<div
-  style={{
-    display: "flex",
-    gap: 10,
-    marginBottom: 12,
-  }}
->
-  <button
-    className="btn btn-outline btn-sm"
-    onClick={() =>
-      exportData({
-        salaries,
-        expenses,
-        emis,
-        investments,
-        budgets,
-        savingsGoals,
-      })
-    }
-  >
-    ⬇ Export
-  </button>
-
-  <label className="btn btn-outline btn-sm">
-    ⬆ Import
-    <input
-      hidden
-      type="file"
-      accept=".json"
-      onChange={e => {
-        if (!e.target.files?.[0]) return;
-
-        importData(e.target.files[0], {
-          setSalaries,
-          setExpenses,
-          setEmis,
-          setInvestments,
-          setBudgets,
-          setSavingsGoals,
-        });
-      }}
-    />
-  </label>
-</div>
-
-/* ─────────────────────────────────────────────────────────
-   SAFER INVESTMENT PROGRESS
-───────────────────────────────────────────────────────── */
-
-<div
-  className="prog-fill"
-  style={{
-    width:
-      totalInvested > 0
-        ? `${Math.min(
-            100,
-            (totalCurrent / totalInvested) * 100
-          )}%`
-        : "0%",
-    background: "#2d6a4f",
-  }}
-/>
-
-/* ─────────────────────────────────────────────────────────
-   DYNAMIC DEMO DATES
-───────────────────────────────────────────────────────── */
-
-const DEMO_DATE = today();
-
-/* Example */
-
-{
-  id: "e1",
-  name: "Grocery Shopping",
-  amount: 3200,
-  category: "Groceries",
-  date: DEMO_DATE,
-  note: "",
-}
-
-/* ─────────────────────────────────────────────────────────
-   DARK MODE READY
-───────────────────────────────────────────────────────── */
-
-const THEMES = {
-  light: {
-    bg: "#f8f6f0",
-    card: "#ffffff",
-    text: "#1a1a2e",
-  },
-
-  dark: {
-    bg: "#111827",
-    card: "#1f2937",
-    text: "#f9fafb",
-  },
+const COLORS = {
+  bg: "#f8f6f0",
+  card: "#ffffff",
+  border: "#e7e1d8",
+  text: "#1a1a2e",
+  muted: "#7f7f7f",
+  accent: "#2d6a4f",
+  accent2: "#52b788",
+  danger: "#e63946",
 };
 
-const [theme, setTheme] = useStorage(
-  "fin_theme",
-  "light"
-);
+// ---------- STYLES ----------
+const css = `
+*{
+  box-sizing:border-box;
+  margin:0;
+  padding:0;
+}
 
-const G = THEMES[theme];
+body{
+  font-family:Arial,sans-serif;
+  background:${COLORS.bg};
+  color:${COLORS.text};
+}
 
-/* TOGGLE */
+.app{
+  max-width:430px;
+  margin:0 auto;
+  min-height:100vh;
+  padding-bottom:90px;
+}
 
-<button
-  className="btn-icon"
-  onClick={() =>
-    setTheme(t =>
-      t === "light" ? "dark" : "light"
-    )
+.header{
+  background:linear-gradient(135deg,#2d6a4f,#52b788);
+  padding:24px 18px 30px;
+  color:white;
+}
+
+.title{
+  font-size:28px;
+  font-weight:bold;
+  margin-bottom:18px;
+}
+
+.balance{
+  font-size:38px;
+  font-weight:bold;
+}
+
+.small{
+  margin-top:8px;
+  opacity:.9;
+}
+
+.card{
+  background:${COLORS.card};
+  border:1px solid ${COLORS.border};
+  border-radius:16px;
+  padding:16px;
+  margin:14px;
+}
+
+.cardTitle{
+  font-size:15px;
+  font-weight:bold;
+  margin-bottom:12px;
+}
+
+.row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 0;
+  border-bottom:1px solid ${COLORS.border};
+}
+
+.row:last-child{
+  border-bottom:none;
+}
+
+.green{
+  color:${COLORS.accent};
+}
+
+.red{
+  color:${COLORS.danger};
+}
+
+.nav{
+  position:fixed;
+  bottom:0;
+  left:50%;
+  transform:translateX(-50%);
+  width:100%;
+  max-width:430px;
+  display:flex;
+  background:white;
+  border-top:1px solid ${COLORS.border};
+}
+
+.nav button{
+  flex:1;
+  border:none;
+  background:none;
+  padding:14px 0;
+  font-size:13px;
+}
+
+.active{
+  color:${COLORS.accent};
+  font-weight:bold;
+}
+
+.fab{
+  position:fixed;
+  right:calc(50% - 190px);
+  bottom:80px;
+  width:56px;
+  height:56px;
+  border:none;
+  border-radius:50%;
+  background:${COLORS.accent};
+  color:white;
+  font-size:28px;
+}
+
+.overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.4);
+  display:flex;
+  align-items:flex-end;
+}
+
+.sheet{
+  width:100%;
+  max-width:430px;
+  margin:0 auto;
+  background:white;
+  border-radius:22px 22px 0 0;
+  padding:20px;
+}
+
+.input{
+  width:100%;
+  padding:12px;
+  margin-top:6px;
+  margin-bottom:14px;
+  border:1px solid ${COLORS.border};
+  border-radius:10px;
+}
+
+.btn{
+  width:100%;
+  border:none;
+  padding:14px;
+  border-radius:12px;
+  background:${COLORS.accent};
+  color:white;
+  font-weight:bold;
+}
+
+.deleteBtn{
+  background:${COLORS.danger};
+  margin-top:10px;
+}
+`;
+
+// ---------- MAIN ----------
+export default function App() {
+  const [tab, setTab] = useState("home");
+
+  const [expenses, setExpenses] = useStorage("expenses", [
+    {
+      id: uid(),
+      name: "Groceries",
+      amount: 2500,
+      category: "Groceries",
+      date: today(),
+    },
+  ]);
+
+  const [income, setIncome] = useStorage("income", [
+    {
+      id: uid(),
+      source: "Salary",
+      amount: 55000,
+      date: today(),
+    },
+  ]);
+
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState({});
+
+  // ---------- TOTALS ----------
+  const totalIncome = income.reduce((a, b) => a + b.amount, 0);
+
+  const totalExpenses = expenses.reduce((a, b) => a + b.amount, 0);
+
+  const balance = totalIncome - totalExpenses;
+
+  // ---------- SAVE EXPENSE ----------
+  function saveExpense() {
+    if (!form.name || !form.amount) return;
+
+    const item = {
+      id: form.id || uid(),
+      name: form.name,
+      amount: Number(form.amount),
+      category: form.category || "Other",
+      date: form.date || today(),
+    };
+
+    if (form.id) {
+      setExpenses((prev) =>
+        prev.map((x) => (x.id === form.id ? item : x))
+      );
+    } else {
+      setExpenses((prev) => [item, ...prev]);
+    }
+
+    setModal(null);
+    setForm({});
   }
->
-  {theme === "light" ? "🌙" : "☀️"}
-</button>
+
+  // ---------- SAVE INCOME ----------
+  function saveIncome() {
+    if (!form.source || !form.amount) return;
+
+    const item = {
+      id: form.id || uid(),
+      source: form.source,
+      amount: Number(form.amount),
+      date: form.date || today(),
+    };
+
+    if (form.id) {
+      setIncome((prev) =>
+        prev.map((x) => (x.id === form.id ? item : x))
+      );
+    } else {
+      setIncome((prev) => [item, ...prev]);
+    }
+
+    setModal(null);
+    setForm({});
+  }
+
+  // ---------- DELETE ----------
+  function deleteExpense(id) {
+    setExpenses((prev) => prev.filter((x) => x.id !== id));
+    setModal(null);
+  }
+
+  function deleteIncome(id) {
+    setIncome((prev) => prev.filter((x) => x.id !== id));
+    setModal(null);
+  }
+
+  return (
+    <>
+      <style>{css}</style>
+
+      <div className="app">
+        {/* HEADER */}
+        <div className="header">
+          <div className="title">FinBook</div>
+
+          <div>
+            {MONTHS[new Date().getMonth()]}{" "}
+            {new Date().getFullYear()}
+          </div>
+
+          <div className="small">Current Balance</div>
+
+          <div className="balance">
+            {balance >= 0 ? "" : "-"}
+            {fmt(Math.abs(balance))}
+          </div>
+        </div>
+
+        {/* HOME */}
+        {tab === "home" && (
+          <>
+            <div className="card">
+              <div className="cardTitle">Summary</div>
+
+              <div className="row">
+                <span>Income</span>
+                <span className="green">
+                  +{fmt(totalIncome)}
+                </span>
+              </div>
+
+              <div className="row">
+                <span>Expenses</span>
+                <span className="red">
+                  -{fmt(totalExpenses)}
+                </span>
+              </div>
+
+              <div className="row">
+                <span>Balance</span>
+                <span
+                  className={
+                    balance >= 0 ? "green" : "red"
+                  }
+                >
+                  {fmt(balance)}
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* EXPENSES */}
+        {tab === "expenses" && (
+          <div className="card">
+            <div className="cardTitle">Expenses</div>
+
+            {expenses.map((e) => (
+              <div
+                key={e.id}
+                className="row"
+                onClick={() => {
+                  setForm(e);
+                  setModal("expense");
+                }}
+              >
+                <div>
+                  <div>{e.name}</div>
+
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: COLORS.muted,
+                    }}
+                  >
+                    {e.category}
+                  </div>
+                </div>
+
+                <div className="red">
+                  -{fmt(e.amount)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* INCOME */}
+        {tab === "income" && (
+          <div className="card">
+            <div className="cardTitle">Income</div>
+
+            {income.map((i) => (
+              <div
+                key={i.id}
+                className="row"
+                onClick={() => {
+                  setForm(i);
+                  setModal("income");
+                }}
+              >
+                <div>{i.source}</div>
+
+                <div className="green">
+                  +{fmt(i.amount)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* FAB */}
+        <button
+          className="fab"
+          onClick={() => {
+            if (tab === "income") {
+              setForm({});
+              setModal("income");
+            } else {
+              setForm({});
+              setModal("expense");
+            }
+          }}
+        >
+          +
+        </button>
+
+        {/* NAV */}
+        <div className="nav">
+          <button
+            className={tab === "home" ? "active" : ""}
+            onClick={() => setTab("home")}
+          >
+            Home
+          </button>
+
+          <button
+            className={tab === "expenses" ? "active" : ""}
+            onClick={() => setTab("expenses")}
+          >
+            Expenses
+          </button>
+
+          <button
+            className={tab === "income" ? "active" : ""}
+            onClick={() => setTab("income")}
+          >
+            Income
+          </button>
+        </div>
+
+        {/* EXPENSE MODAL */}
+        {modal === "expense" && (
+          <div
+            className="overlay"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setModal(null);
+              }
+            }}
+          >
+            <div className="sheet">
+              <h2 style={{ marginBottom: 20 }}>
+                {form.id
+                  ? "Edit Expense"
+                  : "Add Expense"}
+              </h2>
+
+              <input
+                className="input"
+                placeholder="Expense name"
+                value={form.name || ""}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    name: e.target.value,
+                  }))
+                }
+              />
+
+              <input
+                className="input"
+                type="number"
+                placeholder="Amount"
+                value={form.amount || ""}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    amount: e.target.value,
+                  }))
+                }
+              />
+
+              <select
+                className="input"
+                value={form.category || "Other"}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    category: e.target.value,
+                  }))
+                }
+              >
+                {EXPENSE_CATEGORIES.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+
+              <button
+                className="btn"
+                onClick={saveExpense}
+              >
+                Save Expense
+              </button>
+
+              {form.id && (
+                <button
+                  className="btn deleteBtn"
+                  onClick={() =>
+                    deleteExpense(form.id)
+                  }
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* INCOME MODAL */}
+        {modal === "income" && (
+          <div
+            className="overlay"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setModal(null);
+              }
+            }}
+          >
+            <div className="sheet">
+              <h2 style={{ marginBottom: 20 }}>
+                {form.id
+                  ? "Edit Income"
+                  : "Add Income"}
+              </h2>
+
+              <input
+                className="input"
+                placeholder="Income source"
+                value={form.source || ""}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    source: e.target.value,
+                  }))
+                }
+              />
+
+              <input
+                className="input"
+                type="number"
+                placeholder="Amount"
+                value={form.amount || ""}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    amount: e.target.value,
+                  }))
+                }
+              />
+
+              <button
+                className="btn"
+                onClick={saveIncome}
+              >
+                Save Income
+              </button>
+
+              {form.id && (
+                <button
+                  className="btn deleteBtn"
+                  onClick={() =>
+                    deleteIncome(form.id)
+                  }
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
